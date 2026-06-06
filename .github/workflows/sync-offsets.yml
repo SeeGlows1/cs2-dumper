@@ -1,0 +1,52 @@
+# Copy this file into your cs2-dumper fork as:
+#   .github/workflows/sync-offsets.yml
+#
+# It mirrors a2x/cs2-dumper output/ into your fork every 6 hours so Phantom
+# can pull offsets from YOUR repo without running the dumper locally.
+
+name: Sync offsets from a2x
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 */6 * * *"
+
+jobs:
+  mirror:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Fetch upstream dump output
+        env:
+          UPSTREAM_OWNER: a2x
+          UPSTREAM_REPO: cs2-dumper
+          UPSTREAM_BRANCH: main
+        run: |
+          set -euo pipefail
+          mkdir -p output
+          for file in offsets.json info.json client_dll.json buttons.json interfaces.json; do
+            url="https://raw.githubusercontent.com/${UPSTREAM_OWNER}/${UPSTREAM_REPO}/${UPSTREAM_BRANCH}/output/${file}"
+            if curl -fsSL "$url" -o "output/${file}"; then
+              echo "fetched ${file}"
+            else
+              echo "skip ${file}"
+              rm -f "output/${file}"
+            fi
+          done
+          test -f output/offsets.json
+          test -f output/info.json
+
+      - name: Commit and push
+        run: |
+          if git diff --quiet; then
+            echo "No offset changes."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add output
+          git commit -m "chore: sync offsets from a2x/cs2-dumper"
+          git push
